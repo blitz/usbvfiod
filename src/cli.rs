@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -13,4 +15,10 @@ pub struct Cli {
     /// increase verbosity.
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
+
+    /// The path where to create a listening Unix domain socket.
+    ///
+    /// This is the path where Cloud Hypervisor will connect to usbvfiod.
+    #[arg(short, long)]
+    pub socket: PathBuf,
 }
