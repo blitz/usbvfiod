@@ -635,6 +635,7 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+ "vfio-bindings",
  "vfio_user",
 ]
 
