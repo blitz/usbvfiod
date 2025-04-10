@@ -662,7 +662,7 @@ dependencies = [
 [[package]]
 name = "vfio_user"
 version = "0.1.0"
-source = "git+https://github.com/rust-vmm/vfio-user.git#3febcdd3fa2531623865663ca1721e1962ed9979"
+source = "git+https://github.com/blitz/vfio-user.git?branch=fixes#25dc717be655c1aada52849e4549274b68389b38"
 dependencies = [
  "bitflags 1.3.2",
  "libc",
