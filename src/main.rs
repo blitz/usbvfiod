@@ -18,17 +18,17 @@ use device::{
 };
 
 #[derive(Debug)]
-struct Backend {
+struct PciDevice {
     config_space: ConfigSpace,
 }
 
-impl Backend {
+impl PciDevice {
     fn new() -> Self {
         Self {
             // 00:14.0 USB controller [0c03]: Intel Corporation Alder Lake-S PCH USB 3.2 Gen 2x2 XHCI Controller [8086:7ae0] (rev 11)
             config_space: ConfigSpaceBuilder::new(0x8086, 0x7ae0)
                 // TODO check
-                .class(0xc0, 0x03, 0x30)
+                .class(0x0c, 0x03, 0x30)
                 // TODO Should be a 64-bit BAR.
                 .mem32_nonprefetchable_bar(0, 4 * 0x1000)
                 .config_space(),
@@ -36,7 +36,7 @@ impl Backend {
     }
 }
 
-impl ServerBackend for Backend {
+impl ServerBackend for PciDevice {
     fn region_read(
         &mut self,
         region: u32,
@@ -178,9 +178,10 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    let mut backend = Backend::new();
+    let mut backend = PciDevice::new();
     let s = Server::new(&args.socket, true, create_irqs(), regions)
         .context("Failed to create vfio-user server")?;
+
     s.run(&mut backend)
         .context("Failed to start vfio-user server")?;
     Ok(())
