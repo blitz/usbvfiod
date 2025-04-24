@@ -1,10 +1,13 @@
 mod cli;
 mod device;
 
+use std::fs::File;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use cli::Cli;
-use tracing::{info, trace, Level};
+use memmap2::MmapMut;
+use tracing::{info, trace, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 use vfio_bindings::bindings::vfio::{
     vfio_region_info, VFIO_PCI_CONFIG_REGION_INDEX, VFIO_PCI_NUM_IRQS, VFIO_PCI_NUM_REGIONS,
@@ -13,13 +16,28 @@ use vfio_bindings::bindings::vfio::{
 use vfio_user::{IrqInfo, Server, ServerBackend};
 
 use device::{
-    bus::{BusDevice, Request, RequestSize, SingleThreadedBusDevice},
+    bus::{Request, RequestSize, SingleThreadedBusDevice},
     pci::config_space::{ConfigSpace, ConfigSpaceBuilder},
 };
 
 #[derive(Debug)]
+struct GuestMemRegion {
+    file: File,
+
+    file_offset: u64,
+    guest_address: u64,
+    size: u64,
+
+    mmap: MmapMut,
+}
+
+#[derive(Debug)]
 struct PciDevice {
     config_space: ConfigSpace,
+
+    guest_memory: Vec<GuestMemRegion>,
+
+    write_offset: usize,
 }
 
 impl PciDevice {
@@ -32,6 +50,8 @@ impl PciDevice {
                 // TODO Should be a 64-bit BAR.
                 .mem32_nonprefetchable_bar(0, 4 * 0x1000)
                 .config_space(),
+            guest_memory: vec![],
+            write_offset: 0,
         }
     }
 }
@@ -54,6 +74,17 @@ impl ServerBackend for PciDevice {
         };
 
         data.copy_from_slice(&value.to_le_bytes()[0..data.len()]);
+
+        // Nuke some memory to see whether we can DMA into the
+        // guest. If you see aaaaaa in the guest kernel backtrace,
+        // this works. :-D
+        if self.guest_memory.len() > 1 {
+            info!("Nuking {:x}", self.write_offset);
+            let raw = &mut self.guest_memory[1].mmap[..];
+            (&mut raw[self.write_offset..(self.write_offset + 4096)])
+                .copy_from_slice(&[0xaa; 4096]);
+            self.write_offset += 4096;
+        }
 
         Ok(())
     }
@@ -95,9 +126,23 @@ impl ServerBackend for PciDevice {
         offset: u64,
         address: u64,
         size: u64,
-        fd: Option<&std::fs::File>,
+        fd: Option<File>,
     ) -> std::result::Result<(), std::io::Error> {
         info!("dma_map flags = {flags:?} offset = {offset} address = {address} size = {size} fd = {fd:?}");
+
+        if let Some(file) = fd {
+            let mmap = unsafe { MmapMut::map_mut(&file)? };
+            self.guest_memory.push(GuestMemRegion {
+                file,
+                file_offset: offset,
+                guest_address: address,
+                size,
+                mmap,
+            });
+        } else {
+            warn!("Ignored guest region, because it has no file descriptor")
+        }
+
         Ok(())
     }
 
